@@ -1,0 +1,13 @@
+[project]
+name = "seoji-portfolio"
+version = "0.1.0"
+description = "투자 판단 보조 — 판단 기준 명세의 스프레드시트·파이썬 구현"
+requires-python = ">=3.10"
+dependencies = ["openpyxl>=3.1"]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
