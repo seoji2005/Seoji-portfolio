@@ -1,0 +1,40 @@
+name: 검사
+
+# PR이 올라오거나 main에 합쳐질 때 자동으로 돈다.
+# main에 합친 뒤에는 GitHub 앱·웹의 Actions → 검사 → Run workflow 로 직접 돌릴 수 있다.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: LibreOffice 설치 (시트 수식 계산용)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libreoffice-calc
+
+      - name: 파이썬 패키지 설치
+        run: pip install openpyxl pytest
+
+      - name: 시트 만들기
+        run: python -m builder
+
+      - name: 테스트 (판단 기준 대조 + 시트 수식 대조)
+        run: python -m pytest -v
+
+      - name: 만든 시트 올리기
+        uses: actions/upload-artifact@v4
+        with:
+          name: sheets
+          path: sheets/*.xlsx
