@@ -1,0 +1,8 @@
+# 앱(Streamlit Cloud)과 검사에 쓰는 라이브러리
+streamlit>=1.50,<2
+yfinance>=0.2.66
+pandas>=2.2
+numpy>=1.26
+plotly>=6.0
+requests>=2.31
+openpyxl>=3.1

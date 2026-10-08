@@ -1,12 +1,15 @@
 name: 검사
 
-# PR이 올라오거나 main에 합쳐질 때 자동으로 돈다.
-# main에 합친 뒤에는 GitHub 앱·웹의 Actions → 검사 → Run workflow 로 직접 돌릴 수 있다.
+# 기본 검사: PR이 올라오거나 main에 합쳐질 때(앱에서 내 자료 my/를 저장할 때는 돌지 않음).
+# 실제 자료 점검: Actions → 검사 → Run workflow로 직접 돌리거나 매주 월요일 자동(Yahoo·SEC·OpenDART 실제 호출).
 on:
   push:
     branches: [main]
+    paths-ignore: ["my/**"]
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: "17 0 * * 1"
 
 jobs:
   test:
@@ -18,6 +21,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
       - name: LibreOffice 설치 (시트 수식 계산용)
         run: |
@@ -25,12 +29,12 @@ jobs:
           sudo apt-get install -y --no-install-recommends libreoffice-calc
 
       - name: 파이썬 패키지 설치
-        run: pip install openpyxl pytest
+        run: pip install -r requirements.txt pytest
 
       - name: 시트 만들기
         run: python -m builder
 
-      - name: 테스트 (판단 기준 대조 + 시트 수식 대조)
+      - name: 테스트 (판단 기준 + 시트 수식 + 앱 화면)
         run: python -m pytest -v
 
       - name: 만든 시트 올리기
@@ -38,3 +42,26 @@ jobs:
         with:
           name: sheets
           path: sheets/*.xlsx
+
+  online:
+    name: 실제 자료 점검
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 파이썬 패키지 설치
+        run: pip install -r requirements.txt pytest
+
+      - name: Yahoo·SEC·OpenDART 실제 호출
+        env:
+          ONLINE: "1"
+          OPENDART_API_KEY: ${{ secrets.OPENDART_API_KEY }}
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: python -m pytest tests/test_online.py -v -s

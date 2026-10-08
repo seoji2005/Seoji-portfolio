@@ -4,3 +4,6 @@ __pycache__/
 # 엑셀·LibreOffice 잠금 파일
 ~$*.xlsx
 .~lock.*#
+
+# Streamlit 비밀값(로컬에서 돌릴 때)
+.streamlit/secrets.toml

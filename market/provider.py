@@ -1,0 +1,63 @@
+"""자료 공급자. LiveProvider는 실제 API, SampleProvider(sample.py)는 인터넷 없이 쓰는 가상 자료."""
+
+from __future__ import annotations
+
+import datetime as dt
+import os
+import threading
+
+import pandas as pd
+
+from . import dart, sec, yahoo
+from .models import Fundamentals, Profile, Quote
+
+DEFAULT_SEC_UA = "Seoji-portfolio personal investing app"
+
+
+def setting(name: str, default: str = "") -> str:
+    """비밀값·설정: 환경변수(Streamlit Cloud는 secrets를 환경변수로도 준다)."""
+    return os.environ.get(name, default).strip()
+
+
+class LiveProvider:
+    name = "live"
+
+    def __init__(self, sec_user_agent: str | None = None, dart_key: str | None = None):
+        self.sec_ua = sec_user_agent or setting("SEC_USER_AGENT", DEFAULT_SEC_UA)
+        self.dart_key = dart_key if dart_key is not None else setting("OPENDART_API_KEY")
+        self._lock = threading.Lock()
+        self._cik = None
+        self._corp = None
+
+    def histories(self, symbols, years=11) -> dict[str, pd.DataFrame]:
+        return yahoo.histories(symbols, years)
+
+    def quote(self, sym) -> Quote:
+        return yahoo.quote(sym)
+
+    def profile(self, sym) -> Profile:
+        return yahoo.profile(sym)
+
+    def fx_usdkrw(self, years=11) -> pd.Series:
+        return yahoo.histories([yahoo.FX_USDKRW], years)[yahoo.FX_USDKRW]["close"]
+
+    def _maps(self, country):
+        with self._lock:
+            if country == "미국" and self._cik is None:
+                self._cik = sec.ticker_map(self.sec_ua)
+            if country == "한국" and self._corp is None:
+                self._corp = dart.corp_codes(self.dart_key)
+        return self._cik if country == "미국" else self._corp
+
+    def fundamentals(self, country, code) -> Fundamentals:
+        if country == "미국":
+            return sec.fetch_fundamentals(code, self.sec_ua, self._maps("미국"))
+        if not self.dart_key:
+            return Fundamentals(source="OpenDART", notes=["OpenDART 인증키(OPENDART_API_KEY)가 설정되지 않음"])
+        return dart.fetch_fundamentals(code, self.dart_key, self._maps("한국"), dt.date.today())
+
+    def status(self) -> dict:
+        return {
+            "SEC_USER_AGENT": "설정됨" if setting("SEC_USER_AGENT") else f"기본값 사용({DEFAULT_SEC_UA})",
+            "OPENDART_API_KEY": "설정됨" if self.dart_key else "없음 — 한국 종목 재무를 받을 수 없음",
+        }
