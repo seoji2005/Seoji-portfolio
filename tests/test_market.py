@@ -239,3 +239,38 @@ def test_collect_tries_kosdaq_when_kospi_empty():
 
     items = collect(OnlyKosdaq(), [Entry("한국", "247540")], set())
     assert items[0].symbol == "247540.KQ" and not items[0].history.empty
+
+
+# ---------------------------------------------------------------- 설정 누락·접속 오류
+
+
+def test_missing_keys_are_reported_without_network(monkeypatch):
+    from market.provider import LiveProvider
+
+    monkeypatch.delenv("SEC_USER_AGENT", raising=False)
+    monkeypatch.delenv("OPENDART_API_KEY", raising=False)
+    lp = LiveProvider()
+    assert "SEC_USER_AGENT" in lp.fundamentals("미국", "AAPL").notes[0]
+    assert "OPENDART_API_KEY" in lp.fundamentals("한국", "005930").notes[0]
+    assert "없음" in lp.status()["SEC_USER_AGENT"]
+
+
+def test_sec_403_explains_the_fix():
+    class Forbidden:
+        def get(self, url, headers=None, timeout=None):
+            return type("R", (), {"status_code": 403, "raise_for_status": lambda self: None})()
+
+    with pytest.raises(PermissionError, match="SEC_USER_AGENT"):
+        sec.ticker_map("ua", Forbidden())
+
+
+def test_data_problem_is_separate_from_filter():
+    class NoData(SampleProvider):
+        def fundamentals(self, country, code):
+            raise PermissionError("SEC가 요청을 거부했습니다(403). SEC_USER_AGENT에 '이름 이메일'을 넣으세요.")
+
+    items = collect(NoData(), [Entry("미국", "AAPL")], set())
+    score(items)
+    assert "SEC_USER_AGENT" in items[0].data_problem and not items[0].result.scored
+    ok = collect(SampleProvider(), [Entry("미국", "AAPL")], set())
+    assert ok[0].data_problem == ""

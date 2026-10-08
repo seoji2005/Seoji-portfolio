@@ -52,6 +52,14 @@ class StockData:
     def name(self) -> str:
         return self.entry.name or self.profile.name or self.entry.code
 
+    @property
+    def data_problem(self) -> str:
+        """재무를 하나도 받지 못했으면 그 이유(설정 누락·접속 오류). 받았으면 빈 글자."""
+        f = self.fundamentals
+        if any(v is not None for v in (f.equity, f.op_income, f.revenue, f.net_income)):
+            return ""
+        return f.notes[0] if f.notes else "재무 자료 없음"
+
 
 def momentum_prices(close: pd.Series):
     """(12개월 전 종가, 1개월 전 종가, 기준일). 기준일은 마지막 거래일."""

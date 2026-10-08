@@ -19,6 +19,14 @@ except Exception as ex:  # noqa: BLE001
     st.stop()
 
 group, best = pools.get(country, ([], None))
+problems = {}
+for d in group:
+    if d.data_problem:
+        problems.setdefault(d.data_problem, []).append(d.name)
+for why, names in problems.items():
+    st.warning(f"{len(names)}종목의 재무를 받지 못해 점수를 매기지 못했습니다 — {why}", icon=":material/cloud_off:")
+if problems:
+    st.page_link("app/views/settings.py", label="설정·도움말에서 고치는 법 보기", icon=":material/settings:")
 if not group:
     st.info("이 시장의 관심 종목이 없습니다. 아래 '관심 종목 고치기'에서 추가하세요.")
 else:
@@ -35,10 +43,10 @@ else:
             {
                 "종목": ("★ " if d.held else "") + d.name,
                 "점수": r.score,
-                "판정": r.decision or ("" if r.scored else "점수 없음"),
+                "판정": "자료 없음" if d.data_problem else (r.decision or ("" if r.scored else "점수 없음")),
                 "현재가": fmt.price(q.price, country),
                 "오늘": chg,
-                "요약": r.summary,
+                "요약": d.data_problem or r.summary,
                 "_code": d.entry.code,
             }
         )

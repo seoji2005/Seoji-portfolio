@@ -11,8 +11,6 @@ import pandas as pd
 from . import dart, sec, yahoo
 from .models import Fundamentals, Profile, Quote
 
-DEFAULT_SEC_UA = "Seoji-portfolio personal investing app"
-
 
 def setting(name: str, default: str = "") -> str:
     """비밀값·설정: 환경변수(Streamlit Cloud는 secrets를 환경변수로도 준다)."""
@@ -23,7 +21,7 @@ class LiveProvider:
     name = "live"
 
     def __init__(self, sec_user_agent: str | None = None, dart_key: str | None = None):
-        self.sec_ua = sec_user_agent or setting("SEC_USER_AGENT", DEFAULT_SEC_UA)
+        self.sec_ua = sec_user_agent if sec_user_agent is not None else setting("SEC_USER_AGENT")
         self.dart_key = dart_key if dart_key is not None else setting("OPENDART_API_KEY")
         self._lock = threading.Lock()
         self._cik = None
@@ -51,6 +49,8 @@ class LiveProvider:
 
     def fundamentals(self, country, code) -> Fundamentals:
         if country == "미국":
+            if not self.sec_ua:
+                return Fundamentals(source="SEC EDGAR", notes=["SEC_USER_AGENT(이름 이메일)가 설정되지 않아 미국 재무를 받지 않음"])
             return sec.fetch_fundamentals(code, self.sec_ua, self._maps("미국"))
         if not self.dart_key:
             return Fundamentals(source="OpenDART", notes=["OpenDART 인증키(OPENDART_API_KEY)가 설정되지 않음"])
@@ -58,6 +58,6 @@ class LiveProvider:
 
     def status(self) -> dict:
         return {
-            "SEC_USER_AGENT": "설정됨" if setting("SEC_USER_AGENT") else f"기본값 사용({DEFAULT_SEC_UA})",
+            "SEC_USER_AGENT": "설정됨" if self.sec_ua else "없음 — 미국 종목 재무를 받을 수 없음",
             "OPENDART_API_KEY": "설정됨" if self.dart_key else "없음 — 한국 종목 재무를 받을 수 없음",
         }

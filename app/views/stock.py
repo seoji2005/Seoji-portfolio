@@ -47,7 +47,9 @@ ui.kpis([
 ])
 
 # 판정
-if r.decision == "편입 후보":
+if d.data_problem:
+    st.error(f"**재무 자료를 받지 못해 점수를 매길 수 없습니다** — {d.data_problem}", icon=":material/cloud_off:")
+elif r.decision == "편입 후보":
     st.success(f"**편입 후보** — 점수 {r.score:.1f} (기준 {SPEC['candidate_score']}점 이상). {r.summary}", icon=":material/thumb_up:")
 elif r.decision.startswith("교체 제안"):
     st.warning(f"**{r.decision}** — 보유 종목 점수 {SPEC['replace_below']}점 미만이고 같은 국가에 {SPEC['replace_gap']}점 이상 높은 후보가 있습니다.", icon=":material/swap_horiz:")

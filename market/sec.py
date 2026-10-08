@@ -171,6 +171,8 @@ def _get_json(url: str, user_agent: str, session=None):
 
     http = session or requests
     r = http.get(url, headers={"User-Agent": user_agent, "Accept-Encoding": "gzip, deflate"}, timeout=30)
+    if r.status_code == 403:
+        raise PermissionError("SEC가 요청을 거부했습니다(403). SEC_USER_AGENT에 '이름 이메일'을 넣으세요.")
     r.raise_for_status()
     return r.json()
 

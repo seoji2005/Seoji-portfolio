@@ -215,7 +215,7 @@ def book() -> Book:
     for h, res in zip(hs, results):
         d = find(h.country, h.code)
         sc = d.result.score if d and d.result and d.result.scored else None
-        why = "" if sc is not None else (d.result.summary if d and d.result else "관심 종목 자료 없음")
+        why = "" if sc is not None else ((d.data_problem or d.result.summary) if d and d.result else "관심 종목 자료 없음")
         ps.append(Position(h.country, h.code, h.name, res.value_krw or 0.0, sc, why))
     return Book(ps, results, cash, total, fx)
 

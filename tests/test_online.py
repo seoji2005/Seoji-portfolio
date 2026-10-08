@@ -39,6 +39,7 @@ def test_yahoo_prices_quotes_profile():
     assert "Bank" in p.industry
 
 
+@pytest.mark.skipif(not os.environ.get("SEC_USER_AGENT"), reason="SEC_USER_AGENT 없음")
 @pytest.mark.parametrize("ticker", ["AAPL", "MSFT", "NVDA"])
 def test_sec_fundamentals(ticker):
     from market import sec
@@ -79,5 +80,8 @@ def test_full_pool_live():
             r = d.result
             print(country, d.symbol, d.name, r.score, r.decision, "|", r.summary, "|", d.fin_reason, d.notes)
     us, _ = out["미국"]
+    if not os.environ.get("SEC_USER_AGENT"):
+        assert all("SEC_USER_AGENT" in d.data_problem for d in us)  # 원인을 알려 줌
+        return
     assert sum(d.result.scored for d in us) >= 3
     assert next(d for d in us if d.symbol == "JPM").result.filter_reasons == ["금융·리츠"]
