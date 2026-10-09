@@ -130,7 +130,7 @@ with st.expander("점수에 쓴 숫자와 출처"):
     def u(v):
         return "–" if v is None else f"{v:,.0f}"
 
-    p12, p1, asof = momentum_prices(d.history["adj_close"]) if not d.history.empty else (None, None, None)
+    p12, p1, asof = momentum_prices(d.history["close"]) if not d.history.empty else (None, None, None)
     table = [
         ("순이익(최근 1년)", s.net_income), ("자본총계", s.equity), ("부채총계", s.liabilities), ("영업이익(최근 1년)", s.op_income),
         ("매출(최근 1년)", s.revenue), ("매출(3년 전 1년)", s.revenue_3y_ago), ("시가총액", s.market_cap),
@@ -142,7 +142,7 @@ with st.expander("점수에 쓴 숫자와 출처"):
         f"- 이자부부채 구성: {', '.join(f'{k} {v / unit:,.0f}' for k, v in f.debt_parts.items()) or '없음'}\n"
         f"- 현금성자산 구성: {', '.join(f'{k} {v / unit:,.0f}' for k, v in f.cash_parts.items()) or '없음'}\n"
         f"- 부채비율: {fmt.pct(r.debt_ratio, 0)} (한도 {SPEC['debt_ratio_max']:.0%})\n"
-        f"- 12-1 수익률(수정종가, 기준일 {asof or '–'}): 12개월 전 {fmt.price(p12, country)}, 1개월 전 {fmt.price(p1, country)}\n"
+        f"- 12-1 수익률(분할·병합 반영 종가, 현금배당 미반영, 기준일 {asof or '–'}): 12개월 전 {fmt.price(p12, country)}, 1개월 전 {fmt.price(p1, country)}\n"
         f"- 금융·리츠 판단: {d.fin_reason}"
     ))
     for note in f.notes + d.notes:

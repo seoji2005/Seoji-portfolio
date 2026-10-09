@@ -1,4 +1,4 @@
-"""사전 밖 기능(삭제 확인 대기): 포트폴리오 점수, 종목을 더하면?
+"""사전 밖 기능(동결·보존): 포트폴리오 점수, 종목을 더하면?
 
 2026-10-08에 요청해 만든 기능이지만 2026-10-09 사전에는 없다. 지울지 확인을 받을 때까지 판단 화면과 분리해 둔다.
 판단(1~7번)에는 쓰지 않는다.
@@ -12,7 +12,7 @@ from judge.portfolio import Position, portfolio_score, shares, what_if
 
 state.header()
 st.title("포트폴리오 점수·종목 추가")
-st.warning("사전 밖 기능입니다. 지울지 확인을 기다리는 중이며, 매수·매도 판단에는 쓰지 않습니다.", icon=":material/inventory_2:")
+st.warning("사전 밖 기능입니다. 동결·보존 중이며, 매수·매도 판단에는 쓰지 않습니다.", icon=":material/inventory_2:")
 
 try:
     b = state.book()

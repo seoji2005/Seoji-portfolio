@@ -148,7 +148,7 @@
 
 | 사전 | 구현 | 테스트(손 계산·가짜 공시와 대조) |
 |---|---|---|
-| 1 점수: 지표 4개, 백분위 → 평균 → 백분위, 결측 제외, 70 편입, 50·10점 교체 | `judge/stocks.py` (`metrics`, `evaluate_pool`), 12-1 수정종가 `market/pool.py` | `test_rules.py::test_example_scores_by_hand`, `test_metrics_formulas`, `test_decisions_and_summary`, `test_rules_v2.py::test_momentum_uses_adjusted_close` |
+| 1 점수: 지표 4개, 백분위 → 평균 → 백분위, 결측 제외, 70 편입, 50·10점 교체 | `judge/stocks.py` (`metrics`, `evaluate_pool`), 12-1 배당 미반영 종가 `market/pool.py` | `test_rules.py::test_example_scores_by_hand`, `test_metrics_formulas`, `test_decisions_and_summary`, `test_rules_v2.py::test_momentum_uses_close_without_dividends` |
 | 2 거름망 | `judge/stocks.py::filter_reasons` | `test_rules.py::test_filter_reasons`(200%·5천억·20억 달러 경계 포함) |
 | 3 시장 심리 | `judge/sentiment.py`, 자료 `market/fred.py`·`ecos.py`·`csvin.py` | `test_rules.py::test_sentiment_*`, `test_sources.py` |
 | 4 거시 | `judge/macro.py`(수출 같은 달 전년비) | `test_rules_v2.py::test_exports_same_month_yoy`, `test_app.py::test_sentiment_and_macro_pages` |

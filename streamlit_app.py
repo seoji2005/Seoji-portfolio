@@ -16,7 +16,7 @@ PAGES = {
         st.Page("app/views/sentiment.py", title="시장 심리", icon=":material/speed:", url_path="sentiment"),
         st.Page("app/views/macro.py", title="거시 참고", icon=":material/public:", url_path="macro"),
     ],
-    "사전 밖 기능(삭제 확인 대기)": [
+    "사전 밖 기능(동결·보존)": [
         st.Page("app/views/extra.py", title="포트폴리오 점수·종목 추가", icon=":material/donut_large:", url_path="extra"),
         st.Page("app/views/backtest.py", title="과거 성과", icon=":material/history:", url_path="backtest"),
     ],

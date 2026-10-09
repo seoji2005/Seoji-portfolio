@@ -18,6 +18,7 @@ SERIES = (
     ("jpy", "엔/달러 3개월 변화율", "엔 캐리 청산 압력", "ratio", "%", "FRED DEXJPUS"),
     ("exports", "한국 수출 전년비", "한국 경기", "yoy", "%", "FRED XTEXVA01KRM667N"),
 )
+MONTHLY = {"sahm", "exports"}  # 월별 자료(날짜는 그달 1일)
 
 
 def transform(kind: str, rows) -> list:
@@ -56,6 +57,22 @@ def transform(kind: str, rows) -> list:
     raise ValueError(kind)
 
 
+def basis(kind: str, rows, day: dt.date) -> list[tuple]:
+    """그날 값을 계산할 때 쓴 원자료 [(날짜, 원값), (비교 날짜, 원값)]. 수준 값은 하나뿐."""
+    obs = [(d, float(v)) for d, v in rows if isinstance(d, dt.date) and is_num(v)]
+    now = next(((d, v) for d, v in obs if d == day), None)
+    if now is None or kind == "level":
+        return [now] if now else []
+    if kind == "yoy":
+        target = add_months(day, -12)
+        base = next(((d, v) for d, v in obs if d == target), None)
+    else:  # diff, ratio: 3개월 전 날짜 또는 그 전 마지막 값(transform과 같음)
+        target = add_months(day, -SPEC["change_months"])
+        before = [(d, v) for d, v in obs if d <= target]
+        base = before[-1] if before else None
+    return [now, base] if base else [now]
+
+
 def panel(raw: dict) -> list[dict]:
     result = []
     for key, label, what, kind, unit, source in SERIES:
@@ -63,7 +80,7 @@ def panel(raw: dict) -> list[dict]:
         xs = transform(kind, rows)
         have = [(d, x) for d, x in xs if x is not None]
         item = {"key": key, "label": label, "what": what, "unit": unit, "source": source}
-        item.update(current=None, last_date=None, pct=None, n=0, first=None)
+        item.update(current=None, last_date=None, pct=None, n=0, first=None, basis=[])
         issues = []
         dates = [d for d, _ in rows if isinstance(d, dt.date)]
         if any(b <= a for a, b in zip(dates, dates[1:])):
@@ -79,6 +96,7 @@ def panel(raw: dict) -> list[dict]:
                 pct=percentile(current, [x for _, x in window]),
                 n=len(window),
                 first=min(d for d, _ in window),
+                basis=basis(kind, rows, last),
             )
             if item["first"] > cutoff + dt.timedelta(days=IMPL["coverage_slack_days"]):
                 issues.append("10년 자료 부족")

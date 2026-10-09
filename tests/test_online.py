@@ -67,24 +67,56 @@ def test_dart_fundamentals(code):
     assert f.op_income is not None and f.net_income is not None
 
 
-def test_full_pool_live():
+BIG = {"미국": ("AAPL", "MSFT", "NVDA"), "한국": ("005930", "000660", "005380")}  # 4지표가 반드시 나와야 하는 대형주
+NEEDS = {"미국": "SEC_USER_AGENT", "한국": "OPENDART_API_KEY"}
+
+
+def pct(v):
+    return "–" if v is None else f"{v:+.1%}"
+
+
+def summary(text):
+    """GitHub Actions 실행 결과 화면(Summary)에도 남긴다."""
+    print(text)
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as fh:
+            fh.write(text + "\n")
+
+
+def test_watchlist_scores_live():
+    """관심 종목 목록 전체를 실제 자료로: 종목마다 4지표와 최종 점수가 나오는지."""
+    import pandas as pd
+
     from market.pool import Entry, collect, score
     from market.provider import LiveProvider
 
-    entries = [Entry("미국", c) for c in ("AAPL", "MSFT", "NVDA", "JPM", "COST")]
-    if os.environ.get("OPENDART_API_KEY"):
-        entries += [Entry("한국", c) for c in ("005930", "000660", "005380")]
-    out = score(collect(LiveProvider(), entries, {("미국", "AAPL")}))
-    for country, (group, best) in out.items():
+    wl = pd.read_csv("my/watchlist.csv", dtype=str).fillna("")
+    entries = [Entry(r.country, r.code, r.name, r.market, r.fin) for r in wl.itertuples()]
+    out = score(collect(LiveProvider(), entries, set()))
+    summary(f"## 관심 종목 실제 자료 점검 ({dt.date.today()})\n")
+    for country, (group, _) in out.items():
+        key = NEEDS[country]
+        summary(f"### {country} — {key} {'있음' if os.environ.get(key) else '없음'}\n")
+        summary("| 종목 | 재무 출처(기준일) | ROE | 매출 3년 성장 | 이익수익률 | 12-1 | 거름망 | 점수 |\n|---|---|---|---|---|---|---|---|")
+        for d in sorted(group, key=lambda d: -(d.result.score or -1)):
+            r, m, f = d.result, d.result.metrics, d.fundamentals
+            src = f"{f.source} {f.as_of}" if not d.data_problem else f"자료 없음: {d.data_problem}"
+            sc = f"{r.score:.1f}" if r.score is not None else r.status
+            summary(f"| {d.name} | {src} | {pct(m['roe'])} | {pct(m['growth'])} | {pct(m['ey'])} | {pct(m['mom'])} | {r.filter_text} | {sc} |")
+            if f.notes or d.notes:
+                print("   ", d.symbol, f.notes + d.notes)
+        scored = [d.result.score for d in group if d.result.scored]
+        summary(f"\n채점 {len(scored)} / {len(group)}\n")
+        if not os.environ.get(key):
+            assert all(key in d.data_problem for d in group)  # 원인을 알려 줌
+            continue
+        assert not [d.symbol for d in group if d.data_problem], "재무를 받지 못한 종목"
         for d in group:
-            r = d.result
-            print(country, d.symbol, d.name, r.score, r.decision, "|", r.summary, "|", d.fin_reason, d.notes)
-    us, _ = out["미국"]
-    if not os.environ.get("SEC_USER_AGENT"):
-        assert all("SEC_USER_AGENT" in d.data_problem for d in us)  # 원인을 알려 줌
-        return
-    assert sum(d.result.scored for d in us) >= 3
-    assert next(d for d in us if d.symbol == "JPM").result.filter_reasons == ["금융·리츠"]
+            if d.entry.code in BIG[country]:
+                assert None not in d.result.metrics.values(), (d.symbol, d.result.metrics)
+        assert scored and all(0 <= x <= 100 for x in scored)
+        if len(scored) > 1:
+            assert max(scored) == 100 and min(scored) == 0  # 최종 점수는 풀 안 백분위
 
 
 # ---------------------------------------------------------------- 사전 3·4·8에 쓰는 자료
@@ -106,8 +138,28 @@ def test_fred_series_for_sentiment_and_macro():
     ids = {"sahm": "SAHMREALTIME", "dgs10": "DGS10", "t10y3m": "T10Y3M", "jpy": "DEXJPUS", "exports": "XTEXVA01KRM667N"}
     items = macro.panel({k: fred.fetch(sid, mstart) for k, sid in ids.items()})
     for it in items:
-        print(it["label"], it["current"], it["last_date"], it["pct"], it["issues"])
+        print(it["label"], it["current"], it["last_date"], it["pct"], it["issues"], "계산에 쓴 값", it["basis"])
     assert sum(it["current"] is not None for it in items) >= 4
+    ex = next(it for it in items if it["key"] == "exports")
+    (d, v), (bd, bv) = ex["basis"]
+    summary(f"## 한국 수출 전년비 대조용 ({dt.date.today()} 조회)\n\n"
+            f"- 시리즈: FRED XTEXVA01KRM667N ({fred_meta('XTEXVA01KRM667N')})\n"
+            f"- {d:%Y-%m}: {v:,.0f}\n- {bd:%Y-%m}: {bv:,.0f}\n- 전년비: {v / bv - 1:.4%}\n")
+
+
+def fred_meta(sid):
+    """FRED 시리즈 화면의 단위·갱신일(대조 기록용). 못 읽으면 그렇다고 적는다."""
+    import re
+
+    import requests
+
+    try:
+        page = requests.get(f"https://fred.stlouisfed.org/series/{sid}", timeout=30).text
+    except Exception as ex:  # noqa: BLE001
+        return f"설명 화면 못 읽음: {ex}"
+    text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", page))
+    found = [m.group(0).strip() for k in ("Units:", "Frequency:", "Updated:") for m in [re.search(k + r"[^:]{0,80}?(?= [A-Z][a-z]+:|$)", text)] if m]
+    return "; ".join(found) or "단위·갱신일 못 찾음"
 
 
 @pytest.mark.skipif(not os.environ.get("ECOS_API_KEY"), reason="ECOS_API_KEY 없음")

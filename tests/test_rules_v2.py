@@ -1,4 +1,4 @@
-"""새 사전(docs/spec.md)의 바뀐 규칙: 7 매수 이유 카드, 6 매도 판단 ②, 4 수출 전년비, 1 12-1 수정종가."""
+"""새 사전(docs/spec.md)의 바뀐 규칙: 7 매수 이유 카드, 6 매도 판단 ②, 4 수출 전년비, 1 12-1 수익률은 배당 미반영 종가."""
 
 import datetime as dt
 
@@ -92,9 +92,33 @@ def test_exports_same_month_yoy():
     assert out[D(2026, 2, 1)] is None and out[D(2025, 6, 1)] is None
 
 
-def test_momentum_uses_adjusted_close():
-    idx = pd.bdate_range("2025-09-01", "2026-09-30")
-    adj = pd.Series(100.0, index=idx)
-    adj[idx >= "2026-01-01"] = 110.0
-    p12, p1, _ = momentum_prices(adj)
-    assert (p12, p1) == (100.0, 110.0)
+def test_macro_panel_shows_the_raw_values_it_used():
+    """화면의 '계산에 쓴 값'만으로 현재값을 다시 계산할 수 있어야 한다(출처 대조용)."""
+    from judge.macro import panel
+
+    exports = [(D(2025, m, 1), 100.0 + m) for m in range(1, 13)] + [(D(2026, 1, 1), 202.0), (D(2026, 2, 1), ".")]
+    days = pd.bdate_range("2026-01-02", "2026-04-30").date
+    rates = [(d, 4.0 + i / 100) for i, d in enumerate(days)]
+    items = {it["key"]: it for it in panel({"exports": exports, "dgs10": rates, "jpy": rates, "sahm": [(D(2026, 3, 1), 0.3)]})}
+    ex = items["exports"]
+    assert ex["basis"] == [(D(2026, 1, 1), 202.0), (D(2025, 1, 1), 101.0)]
+    assert ex["current"] == pytest.approx(202.0 / 101.0 - 1)
+    (d, v), (bd, bv) = items["dgs10"]["basis"]
+    assert d == days[-1] and bd <= D(2026, 1, 30) and items["dgs10"]["current"] == pytest.approx(v - bv)
+    (d, v), (bd, bv) = items["jpy"]["basis"]
+    assert items["jpy"]["current"] == pytest.approx(v / bv - 1)
+    assert items["sahm"]["basis"] == [(D(2026, 3, 1), 0.3)]
+    assert items["t10y3m"]["basis"] == []
+
+
+def test_momentum_uses_close_without_dividends():
+    """사전 1번: 수정종가 = 분할·병합·증자 반영, 현금배당 미반영. 배당까지 반영한 adj_close를 쓰면 안 된다."""
+    from market.pool import Entry, collect
+    from market.sample import SampleProvider
+
+    items = collect(SampleProvider(), [Entry("미국", "AAPL", "애플")], set(), workers=1)
+    h, s = items[0].history, items[0].stock
+    assert not h["close"].equals(h["adj_close"])  # 예시 자료는 배당만큼 두 값이 다름
+    p12, p1, _ = momentum_prices(h["close"])
+    assert (s.price_12m, s.price_1m) == (p12, p1)
+    assert (s.price_12m, s.price_1m) != momentum_prices(h["adj_close"])[:2]

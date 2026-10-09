@@ -9,7 +9,7 @@ from market import yahoo
 
 state.header()
 st.title("과거 성과")
-st.warning("사전 밖 기능입니다. 지울지 확인을 기다리는 중이며, 매수·매도 판단에는 쓰지 않습니다.", icon=":material/inventory_2:")
+st.warning("사전 밖 기능입니다. 동결·보존 중이며, 매수·매도 판단에는 쓰지 않습니다.", icon=":material/inventory_2:")
 st.caption("배당 재투자(수정주가), 월말 기준. 과거 성과는 미래를 보장하지 않으며, 어떤 매매 규칙의 입력도 아닙니다.")
 
 BENCH = {"S&P 500 (SPY)": "SPY", "코스피 200 (KODEX 200)": "069500.KS", "없음": None}

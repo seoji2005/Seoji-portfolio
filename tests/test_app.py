@@ -102,7 +102,10 @@ def test_sentiment_and_macro_pages(my_dir):
     at = run("app/views/sentiment.py")
     assert "심리 점수" in text(at) and "신규 매수" in text(at)
     at = run("app/views/macro.py")
-    assert len(at.dataframe[0].value) == 5
+    table = at.dataframe[0].value
+    assert len(table) == 5
+    exports = table[table["지표"] == "한국 수출 전년비"]["계산에 쓴 값"].iloc[0]
+    assert " ÷ " in exports and exports.endswith(" − 1")  # 이번 달 원값 ÷ 1년 전 같은 달 원값 − 1
 
 
 def test_non_spec_pages_are_labeled(my_dir):
