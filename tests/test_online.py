@@ -100,9 +100,11 @@ def test_watchlist_scores_live():
         summary("| 종목 | 재무 출처(기준일) | ROE | 매출 3년 성장 | 이익수익률 | 12-1 | 거름망 | 점수 |\n|---|---|---|---|---|---|---|---|")
         for d in sorted(group, key=lambda d: -(d.result.score or -1)):
             r, m, f = d.result, d.result.metrics, d.fundamentals
-            src = f"{f.source} {f.as_of}" if not d.data_problem else f"자료 없음: {d.data_problem}"
-            sc = f"{r.score:.1f}" if r.score is not None else r.status
-            summary(f"| {d.name} | {src} | {pct(m['roe'])} | {pct(m['growth'])} | {pct(m['ey'])} | {pct(m['mom'])} | {r.filter_text} | {sc} |")
+            if d.data_problem:  # 재무를 못 받은 것을 거름망 탈락처럼 보이지 않게
+                src, flt, sc = f"자료 없음: {d.data_problem}", "판단 불가(재무 없음)", "없음(재무 없음)"
+            else:
+                src, flt, sc = f"{f.source} {f.as_of}", r.filter_text, f"{r.score:.1f}" if r.score is not None else r.status
+            summary(f"| {d.name} | {src} | {pct(m['roe'])} | {pct(m['growth'])} | {pct(m['ey'])} | {pct(m['mom'])} | {flt} | {sc} |")
             if f.notes or d.notes:
                 print("   ", d.symbol, f.notes + d.notes)
         scored = [d.result.score for d in group if d.result.scored]
