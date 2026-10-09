@@ -6,8 +6,8 @@ import pytest
 
 from builder import example
 from judge.common import add_months, band, excel_round, percentile, top_share
-from judge.holdings import BuyPlan, Reason, earnings_check, evaluate_holdings, plan_purchase, record_status
-from judge.macro import panel, transform
+from builder.v1_holdings import BuyPlan, Reason, earnings_check, evaluate_holdings, plan_purchase, record_status  # 이전 명세(시트)
+from builder.v1_macro import panel, transform  # 이전 명세(시트)
 from judge.sentiment import compute
 from judge.stocks import Stock, evaluate_pool, filter_reasons, metrics
 

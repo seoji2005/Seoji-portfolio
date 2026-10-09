@@ -59,9 +59,10 @@ jobs:
       - name: 파이썬 패키지 설치
         run: pip install -r requirements.txt pytest
 
-      - name: Yahoo·SEC·OpenDART 실제 호출
+      - name: Yahoo·FRED·SEC·OpenDART·ECOS 실제 호출
         env:
           ONLINE: "1"
           OPENDART_API_KEY: ${{ secrets.OPENDART_API_KEY }}
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+          ECOS_API_KEY: ${{ secrets.ECOS_API_KEY }}
         run: python -m pytest tests/test_online.py -v -s

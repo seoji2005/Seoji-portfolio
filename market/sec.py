@@ -177,6 +177,23 @@ def _get_json(url: str, user_agent: str, session=None):
     return r.json()
 
 
+def get_text(url: str, user_agent: str, session=None) -> str:
+    import requests
+
+    http = session or requests
+    r = http.get(url, headers={"User-Agent": user_agent, "Accept-Encoding": "gzip, deflate"}, timeout=30)
+    if r.status_code == 403:
+        raise PermissionError("SEC가 요청을 거부했습니다(403). SEC_USER_AGENT에 '이름 이메일'을 넣으세요.")
+    r.raise_for_status()
+    return r.text
+
+
+def company_titles(user_agent: str, session=None) -> dict[str, tuple[int, str]]:
+    """티커 → (CIK, SEC 등록 회사명)."""
+    data = _get_json(TICKERS_URL, user_agent, session)
+    return {row["ticker"].upper(): (int(row["cik_str"]), row["title"]) for row in data.values()}
+
+
 def ticker_map(user_agent: str, session=None) -> dict[str, int]:
     """티커 → CIK."""
     data = _get_json(TICKERS_URL, user_agent, session)

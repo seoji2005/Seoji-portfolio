@@ -15,7 +15,13 @@ PORTFOLIO = """country,code,name,qty,avg_price,cost_krw,last_earnings
 한국,005930,삼성전자,100,70000,7000000,
 미국,TSLA,테슬라,10,300,4000000,
 """
-PAGES = ["app/views/watchlist.py", "app/views/stock.py", "app/views/portfolio.py", "app/views/backtest.py", "app/views/settings.py"]
+CARDS = """code,no,reason,indicator,fact,condition,period,status,note,checked
+005930,1,메모리 업황,부문 영업이익,,2분기 연속 적자,,무너짐,2분기 적자 확인,2026-08-01
+005930,2,고객 계약,,핵심 고객 장기 계약 공시,해지·미갱신,,통과,,2026-08-01
+AAPL,1,서비스 매출,서비스 매출 전년비,,2회 연속 5% 미만,,보류,자료 상충,2026-08-01
+"""
+PAGES = ["app/views/watchlist.py", "app/views/stock.py", "app/views/reasons.py", "app/views/portfolio.py", "app/views/sentiment.py",
+         "app/views/macro.py", "app/views/extra.py", "app/views/backtest.py", "app/views/settings.py"]
 
 
 @pytest.fixture
@@ -27,10 +33,8 @@ def my_dir(tmp_path, monkeypatch):
     )
     (tmp_path / "portfolio.csv").write_text(PORTFOLIO, encoding="utf-8")
     (tmp_path / "account.csv").write_text("total_krw,cash_krw\n100000000,3000000\n", encoding="utf-8")
-    (tmp_path / "reasons.csv").write_text(
-        "code,no,reason,core,evidence,break_rule,checked,result\n005930,1,메모리 업황,Y,부문 이익,2분기 연속 적자,2026-08-01,무너짐\n",
-        encoding="utf-8",
-    )
+    (tmp_path / "buy_reasons.csv").write_text(CARDS, encoding="utf-8")
+    (tmp_path / "evidence.csv").write_text("code,kind,holder,detail,weight_pct,as_of,source\nAAPL,참고지수 비중,S&P 500,,6.5,2026-09-30,spglobal.com\n", encoding="utf-8")
     monkeypatch.setenv("DATA_MODE", "sample")
     monkeypatch.setenv("MY_DATA_DIR", str(tmp_path))
     return tmp_path
@@ -44,6 +48,10 @@ def run(page=None):
     return at
 
 
+def text(at):
+    return " ".join([m.body for m in at.markdown] + [c.body for c in at.caption] + [w.body for w in at.warning] + [i.body for i in at.info])
+
+
 @pytest.mark.parametrize("page", PAGES)
 def test_every_page_renders_without_errors(my_dir, page):
     at = run(page)
@@ -54,20 +62,50 @@ def test_every_page_renders_without_errors(my_dir, page):
 
 def test_watchlist_shows_pool_summary(my_dir):
     at = run()
-    html = " ".join(m.body for m in at.markdown)
-    assert "채점 종목" in html and "/ 4" in html  # 미국 4종목(JPM은 금융이라 점수 없음)
+    assert "채점 종목" in text(at) and "/ 4" in text(at)  # 미국 4종목(JPM은 금융이라 점수 없음)
     assert any("★ 애플" in str(df.value) for df in at.dataframe)
 
 
-def test_portfolio_actions_follow_priority(my_dir):
+def test_sell_signals_follow_card_status(my_dir):
     at = run("app/views/portfolio.py")
-    shown = [w.value for w in at.warning]
-    samsung = [w for w in shown if w.startswith("**삼성전자**")]
-    # 비중 40%도 넘지만, 핵심 이유가 무너진 ②가 ③보다 먼저
-    assert samsung and "② 핵심 매수 이유 붕괴" in samsung[0]
+    samsung = [w.value for w in at.warning if w.value.startswith("**삼성전자**")]
+    assert samsung and "② 매수 이유 무너짐 → 매도 검토" in samsung[0]  # 비중 40%도 넘지만 ②가 먼저
+    assert not any(w.value.startswith("**애플** — ②") for w in at.warning)  # 보류는 신호가 아님
+    assert any("③ 비중" in c.value for c in at.caption)  # 뒤 순위 신호도 함께 보임
 
 
-def test_stock_page_what_if(my_dir):
-    at = run("app/views/stock.py")
-    html = " ".join(m.body for m in at.markdown)
-    assert "포트폴리오 점수" in html and "개별 몫 대비" in html
+def test_stock_card_shows_filter_card_and_evidence(my_dir):
+    at = run("app/views/stock.py")  # 첫 종목 = 애플
+    t = text(at)
+    assert "**거름망**" in t and "부채비율 200% 이하" in t
+    assert "**매수 이유 카드** — 보류" in t
+    assert "참고 근거" in [s.value for s in at.subheader]
+    assert "S&P 500 비중" not in t  # 13F 비중이 없으면 지수 비중만으로 차이를 만들지 않음
+    assert "미확인" in t and "예시 자료 모드라 SEC를 조회하지 않음" in t
+
+
+def test_reason_card_page_shows_status_and_buy_block(my_dir):
+    at = run("app/views/reasons.py")
+    table = at.dataframe[0].value
+    assert set(table["카드 상태"]) == {"무너짐", "보류"}
+
+
+def test_legacy_reasons_are_shown_not_deleted(my_dir):
+    (my_dir / "buy_reasons.csv").unlink()
+    (my_dir / "reasons.csv").write_text("code,no,reason,core,evidence,break_rule,checked,result\n005930,1,옛 이유,Y,부문 이익,적자,2026-01-01,유지\n", encoding="utf-8")
+    at = run("app/views/reasons.py")
+    assert any("이전 형식" in i.value for i in at.info)
+    assert (my_dir / "reasons.csv").exists()
+
+
+def test_sentiment_and_macro_pages(my_dir):
+    at = run("app/views/sentiment.py")
+    assert "심리 점수" in text(at) and "신규 매수" in text(at)
+    at = run("app/views/macro.py")
+    assert len(at.dataframe[0].value) == 5
+
+
+def test_non_spec_pages_are_labeled(my_dir):
+    for page in ("app/views/extra.py", "app/views/backtest.py"):
+        at = run(page)
+        assert any("사전 밖 기능" in w.value for w in at.warning)

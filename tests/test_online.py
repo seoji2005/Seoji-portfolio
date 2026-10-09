@@ -85,3 +85,55 @@ def test_full_pool_live():
         return
     assert sum(d.result.scored for d in us) >= 3
     assert next(d for d in us if d.symbol == "JPM").result.filter_reasons == ["금융·리츠"]
+
+
+# ---------------------------------------------------------------- 사전 3·4·8에 쓰는 자료
+
+
+def test_fred_series_for_sentiment_and_macro():
+    from judge import macro, sentiment
+    from market import fred
+
+    start = dt.date.today() - dt.timedelta(days=int(365.25 * 6.5))
+    raw = {k: fred.fetch(sid, start) for k, sid in {"sp500": "SP500", "vix": "VIXCLS", "baa": "BAA10Y"}.items()}
+    for k, rows in raw.items():
+        print(k, len(rows), rows[-1])
+        assert len(rows) > 1000
+    res = sentiment.compute("미국", raw)
+    print("미국 심리", res.score, res.band, res.message, [(i["label"], i["latest"], i["last_date"]) for i in res.indicators])
+    assert res.score is not None and 0 <= res.score <= 100
+    mstart = dt.date.today() - dt.timedelta(days=int(365.25 * 11.5))
+    ids = {"sahm": "SAHMREALTIME", "dgs10": "DGS10", "t10y3m": "T10Y3M", "jpy": "DEXJPUS", "exports": "XTEXVA01KRM667N"}
+    items = macro.panel({k: fred.fetch(sid, mstart) for k, sid in ids.items()})
+    for it in items:
+        print(it["label"], it["current"], it["last_date"], it["pct"], it["issues"])
+    assert sum(it["current"] is not None for it in items) >= 4
+
+
+@pytest.mark.skipif(not os.environ.get("ECOS_API_KEY"), reason="ECOS_API_KEY 없음")
+def test_ecos_rates():
+    from market import ecos
+
+    end = dt.date.today()
+    for which in ("aa", "ktb"):
+        rows = ecos.fetch(os.environ["ECOS_API_KEY"], which, end - dt.timedelta(days=60), end)
+        print(which, len(rows), rows[-3:])
+        assert rows and all(v is None or 0 < v < 20 for _, v in rows)
+
+
+@pytest.mark.skipif(not os.environ.get("SEC_USER_AGENT"), reason="SEC_USER_AGENT 없음")
+def test_form4_and_13f_live():
+    from market import f13, insider, sec
+
+    ua = os.environ["SEC_USER_AGENT"]
+    titles = sec.company_titles(ua)
+    for t in ("AAPL", "JPM"):
+        cik, title = titles[t]
+        s = insider.fetch(cik, ua)
+        print(t, title, "확인", [(p.date, p.owner, p.shares, p.evidence[:80]) for p in s.confirmed],
+              "미확인", len(s.unconfirmed), "10b5-1 제외", len(s.excluded))
+    period, rows = f13.latest_13f(1067983, ua)  # 버크셔 해서웨이
+    print("13F", period, len(rows), sorted(((r.value, r.issuer) for r in rows), reverse=True)[:5])
+    assert period and len(rows) > 10
+    w, matched = f13.weight_of(rows, titles["AAPL"][1])
+    print("AAPL in Berkshire 13F", w, matched)

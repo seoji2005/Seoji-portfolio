@@ -19,7 +19,15 @@ FILES = {
     "watchlist": ("my/watchlist.csv", ["country", "code", "name", "market", "fin"]),
     "portfolio": ("my/portfolio.csv", ["country", "code", "name", "qty", "avg_price", "cost_krw", "last_earnings"]),
     "account": ("my/account.csv", ["total_krw", "cash_krw"]),
-    "reasons": ("my/reasons.csv", ["code", "no", "reason", "core", "evidence", "break_rule", "checked", "result"]),
+    "reasons": ("my/reasons.csv", ["code", "no", "reason", "core", "evidence", "break_rule", "checked", "result"]),  # 이전 형식(지우지 않음)
+    "cards": ("my/buy_reasons.csv", ["code", "no", "reason", "indicator", "fact", "condition", "period", "status", "note", "checked"]),
+    "reason_history": ("my/reason_history.csv", ["changed_at", "code", "no", "field", "old", "new", "why"]),
+    "evidence": ("my/evidence.csv", ["code", "kind", "holder", "detail", "weight_pct", "as_of", "source"]),
+    "managers": ("my/managers.csv", ["name", "cik"]),
+    "kr_vkospi": ("my/market/kr_vkospi.csv", ["date", "value"]),
+    "kr_aa": ("my/market/kr_aa.csv", ["date", "value"]),
+    "kr_ktb": ("my/market/kr_ktb.csv", ["date", "value"]),
+    "kr_credit": ("my/market/kr_credit.csv", ["date", "value"]),
 }
 
 

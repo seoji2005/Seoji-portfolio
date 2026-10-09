@@ -1,11 +1,12 @@
-"""종목 상세: 시세, 판정, 점수 설명 카드, 차트, 재무 근거, 포트폴리오에 넣으면?"""
+"""종목 카드(사전 출력): 거름망 결과, 지표 값·풀 내 위치, 한 줄 요약, 참고 근거, 매수 이유 카드 상태. 주가 차트와 재무 출처."""
 
 import pandas as pd
 import streamlit as st
 
-from app import charts, fmt, state, ui
+from app import charts, fmt, state, store, ui
 from judge.common import IMPL, SPEC
-from judge.portfolio import Position, shares, what_if
+from judge.evidence import KINDS
+from judge.reasons import card
 from judge.stocks import METRICS
 from market.pool import UNIT, UNIT_NAME, momentum_prices
 
@@ -60,6 +61,22 @@ elif not r.scored:
 else:
     st.info(f"**{r.decision or '편입 기준 미달'}** — 점수 {r.score:.1f}. {r.summary}", icon=":material/info:")
 
+# 거름망 결과와 매수 이유 카드 상태
+s0 = d.stock
+checks = [
+    ("최근 1년 영업이익 흑자", s0.op_income is not None and s0.op_income > 0, fmt.money(s0.op_income * UNIT[country], country) if s0.op_income is not None else "자료 없음"),
+    ("부채비율 200% 이하", r.debt_ratio is not None and r.debt_ratio <= SPEC["debt_ratio_max"], fmt.pct(r.debt_ratio, 0) if r.debt_ratio is not None else "자료 없음"),
+    (f"시총 {'5천억 원' if country == '한국' else '20억 달러'} 이상", s0.market_cap is not None and s0.market_cap >= SPEC["mcap_min"][country],
+     fmt.money(s0.market_cap * UNIT[country], country) if s0.market_cap is not None else "자료 없음"),
+    ("금융·리츠 아님", not d.fin, d.fin_reason),
+]
+st.markdown(ui.md("**거름망** — " + ("통과" if not r.filter_reasons else "제외: " + ", ".join(r.filter_reasons)) + "  \n" +
+                  " · ".join(f"{'✓' if ok else '✗'} {name} ({val})" for name, ok, val in checks)))
+cd = card(code, state.reason_items())
+st.markdown(f"**매수 이유 카드** — {cd.status or ('없음' if not cd.items else '상태 미선택')}" + ("" if cd.buy_ok else f" · {cd.buy_why}"))
+st.session_state["card_code"] = code  # 카드 화면이 이 종목으로 열리게
+st.page_link("app/views/reasons.py", label="매수 이유 카드 열기", icon=":material/fact_check:")
+
 # 점수 설명 카드
 st.subheader("점수 설명")
 rows = []
@@ -113,52 +130,60 @@ with st.expander("점수에 쓴 숫자와 출처"):
     def u(v):
         return "–" if v is None else f"{v:,.0f}"
 
-    p12, p1, asof = momentum_prices(d.history["close"]) if not d.history.empty else (None, None, None)
+    p12, p1, asof = momentum_prices(d.history["adj_close"]) if not d.history.empty else (None, None, None)
     table = [
         ("순이익(최근 1년)", s.net_income), ("자본총계", s.equity), ("부채총계", s.liabilities), ("영업이익(최근 1년)", s.op_income),
         ("매출(최근 1년)", s.revenue), ("매출(3년 전 1년)", s.revenue_3y_ago), ("시가총액", s.market_cap),
         ("이자부부채", s.debt), ("현금성자산", s.cash),
     ]
     st.dataframe(pd.DataFrame([(k, u(v)) for k, v in table], columns=["항목", f"금액({UNIT_NAME[country]})"]), hide_index=True)
-    st.markdown(
+    st.markdown(ui.md(
         f"- 재무 출처: {f.source or '–'} (기준일 {f.as_of or '–'})\n"
         f"- 이자부부채 구성: {', '.join(f'{k} {v / unit:,.0f}' for k, v in f.debt_parts.items()) or '없음'}\n"
         f"- 현금성자산 구성: {', '.join(f'{k} {v / unit:,.0f}' for k, v in f.cash_parts.items()) or '없음'}\n"
         f"- 부채비율: {fmt.pct(r.debt_ratio, 0)} (한도 {SPEC['debt_ratio_max']:.0%})\n"
-        f"- 주가 기준일 {asof or '–'}: 12개월 전 {fmt.price(p12, country)}, 1개월 전 {fmt.price(p1, country)}\n"
+        f"- 12-1 수익률(수정종가, 기준일 {asof or '–'}): 12개월 전 {fmt.price(p12, country)}, 1개월 전 {fmt.price(p1, country)}\n"
         f"- 금융·리츠 판단: {d.fin_reason}"
-    )
+    ))
     for note in f.notes + d.notes:
         st.caption(f"· {note}")
 
-# 포트폴리오에 넣으면?
-st.subheader("포트폴리오에 넣으면?")
-amount = st.number_input("살 금액(원)", min_value=0, value=1_000_000, step=500_000, format="%d")
-if amount > 0:
-    try:
-        b = state.book()
-    except Exception as ex:  # noqa: BLE001
-        st.error(f"포트폴리오를 계산하지 못했습니다: {ex}")
-        st.stop()
-    add = Position(country, code, d.name, float(amount), r.score if r.scored else None, r.summary)
-    w = what_if(b.positions, b.cash, add)
-    before, after = w["before"], w["after"]
-    held = [p for p in w["positions_after"] if p.value_krw > 0]
-    share = shares(held, w["cash_after"])
-    ui.kpis([
-        ("포트폴리오 점수", fmt.score(after.total), ui.change(after.total, before.total)),
-        ("이 종목 비중", fmt.pct(share.get(code)), "개별 몫 대비"),
-        ("개별 종목 수", f"{w['count_after']}개", "명세: 3~5개"),
-    ])
-    if w["concentration_after"]:
-        for name, weight, excess in w["concentration_after"]:
-            st.warning(f"{name} 비중 {weight:.0%} — 개별 몫(주식+대기 현금)의 40%를 넘습니다(초과 {fmt.won(excess)}).", icon=":material/warning:")
-    if w["new_money"] > 0:
-        st.caption(f"대기 현금 {fmt.won(b.cash)}보다 많아서 {fmt.won(w['new_money'])}은 새 돈으로 봤습니다.")
-    if not r.scored:
-        st.caption("이 종목은 점수가 없어 포트폴리오 점수 계산에서 빠집니다.")
-    st.plotly_chart(charts.weights_bar([p.name for p in held], [share[p.code] for p in held], {d.name}, SPEC["conc_max"], dark), config=charts.CONFIG)
-    st.caption(f"비중 = 개별 몫(주식 + 남은 대기 현금 {fmt.won(w['cash_after'])}) 대비. 40% 규칙은 3종목 이상일 때 적용.")
-    if st.button("이 구성으로 과거 성과 보기", icon=":material/history:"):
-        st.session_state["bt_add"] = (country, code, float(amount))
-        st.switch_page("app/views/backtest.py")
+# 참고 근거(사전 8)
+st.subheader("참고 근거")
+st.caption("표시만 합니다. 점수·순위·매매 규칙에 반영하지 않습니다. 자료가 없으면 '미확인'이며, 다른 숫자로 대신 채우지 않습니다.")
+try:
+    with st.spinner("공시 자료를 확인하는 중…"):
+        sections = state.evidence(d)
+except Exception as ex:  # noqa: BLE001
+    sections = []
+    st.error(f"참고 근거를 불러오지 못했습니다: {ex}")
+for sec_ in sections:
+    st.markdown(f"**{sec_.title}**")
+    for line in sec_.lines or ["미확인"]:
+        st.markdown(ui.md(f"- {line}"))
+    if sec_.note:
+        st.caption(sec_.note)
+
+with st.expander("확인한 근거 직접 넣기"):
+    st.caption("출처(공시 링크·문서)와 기준일이 있는 확인된 사실만. 종류: " + " / ".join(KINDS) + ". 참고지수 비중은 비중(%) 칸에.")
+    ev = store.read("evidence")
+    mine = ev[ev["code"].astype(str) == code].drop(columns=["code"]).reset_index(drop=True)
+    edited = st.data_editor(
+        mine,
+        num_rows="dynamic",
+        hide_index=True,
+        column_config={
+            "kind": st.column_config.SelectboxColumn("종류", options=list(KINDS), required=True),
+            "holder": st.column_config.TextColumn("누가(사람·운용자·기관·지수)", required=True),
+            "detail": st.column_config.TextColumn("무엇을"),
+            "weight_pct": st.column_config.TextColumn("비중(%)"),
+            "as_of": st.column_config.TextColumn("기준일"),
+            "source": st.column_config.TextColumn("출처", required=True),
+        },
+        key=f"ev_editor_{code}",
+    )
+    if st.button("근거 저장"):
+        rest = ev[ev["code"].astype(str) != code]
+        new = edited.dropna(how="all").fillna("").assign(code=code)
+        state.flash(store.write("evidence", pd.concat([rest, new], ignore_index=True)[store.FILES["evidence"][1]]))
+        st.rerun()

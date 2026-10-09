@@ -1,14 +1,17 @@
-"""4. 거시 참고 패널. 표시만 한다. 어떤 규칙의 입력도 아니고 합산 점수도 없다.
+"""고정본: 이전 명세(docs/spec_v1.md) 4번. 스프레드시트(sheets/)가 따르는 기준이라 바꾸지 않는다. 앱은 judge/를 쓴다.
+
+4. 거시 참고 패널. 표시만 한다. 어떤 규칙의 입력도 아니고 합산 점수도 없다.
 
 원자료는 FRED 형식(날짜 오름차순, 빈 값은 '.' 또는 빈칸)을 가정한다.
 """
+
 
 from __future__ import annotations
 
 import bisect
 import datetime as dt
 
-from .common import IMPL, SPEC, add_months, is_num, percentile
+from judge.common import IMPL, SPEC, add_months, is_num, percentile
 
 # (키, 지표, 보는 것, 계산 방식, 단위, 출처)
 SERIES = (
@@ -16,7 +19,7 @@ SERIES = (
     ("dgs10", "미 10년물 금리 3개월 변화", "금리 급등", "diff", "%p", "FRED DGS10"),
     ("t10y3m", "10년물 − 3개월물 금리차", "장단기 역전", "level", "%p", "FRED T10Y3M"),
     ("jpy", "엔/달러 3개월 변화율", "엔 캐리 청산 압력", "ratio", "%", "FRED DEXJPUS"),
-    ("exports", "한국 수출 전년비", "한국 경기", "yoy", "%", "FRED XTEXVA01KRM667N"),
+    ("exports", "한국 수출 3개월 전년비", "한국 경기", "yoy3", "%", "FRED XTEXVA01KRM667N"),
 )
 
 
@@ -44,14 +47,21 @@ def transform(kind: str, rows) -> list:
                     x = v / filled[pos] - 1
             out.append((d, x))
         return out
-    if kind == "yoy":  # 같은 달 전년비(월별 자료)
-        by_date = {}
+    if kind == "yoy3":
+        nums = [(d, float(v)) for d, v in rows if is_num(v)]
+
+        def window(lo, hi):
+            vals = [v for d, v in nums if lo < d <= hi]
+            return len(vals), sum(vals)
+
         for d, v in rows:
+            x = None
             if is_num(v):
-                by_date.setdefault(d, float(v))
-        for d, v in rows:
-            prev = by_date.get(add_months(d, -12))
-            out.append((d, v / prev - 1 if is_num(v) and prev not in (None, 0) else None))
+                n1, s1 = window(add_months(d, -3), d)
+                n0, s0 = window(add_months(d, -15), add_months(d, -12))
+                if n1 == 3 and n0 == 3 and s0 != 0:
+                    x = s1 / s0 - 1
+            out.append((d, x))
         return out
     raise ValueError(kind)
 

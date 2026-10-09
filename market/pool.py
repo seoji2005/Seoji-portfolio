@@ -62,7 +62,7 @@ class StockData:
 
 
 def momentum_prices(close: pd.Series):
-    """(12개월 전 종가, 1개월 전 종가, 기준일). 기준일은 마지막 거래일."""
+    """(12개월 전, 1개월 전 수정종가, 기준일). 기준일은 마지막 거래일. 넘기는 값은 수정종가(adj_close)."""
     close = close.dropna()
     if close.empty:
         return None, None, None
@@ -138,8 +138,9 @@ def collect(provider, entries: list[Entry], held_codes: set, years: int = 11, wo
         h = hist.get(sym, pd.DataFrame(columns=["close", "adj_close"]))
         fin, why = financial_flag(e, p)
         held = (e.country, e.code) in held_codes
-        _, _, asof = momentum_prices(h["close"]) if not h.empty else (None, None, None)
-        return StockData(e, sym, h, q, p, f, fin, why, asof, to_stock(e, held, f, q, h.get("close", pd.Series(dtype=float)), fin), held=held, notes=notes)
+        adj = h["adj_close"] if "adj_close" in h else pd.Series(dtype=float)  # 12-1 수익률은 수정종가(사전 1번)
+        _, _, asof = momentum_prices(adj)
+        return StockData(e, sym, h, q, p, f, fin, why, asof, to_stock(e, held, f, q, adj, fin), held=held, notes=notes)
 
     with ThreadPoolExecutor(max_workers=workers) as ex:
         return list(ex.map(wrap(one) if wrap else one, entries))

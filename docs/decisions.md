@@ -141,3 +141,20 @@
 
 - 이 작업 환경에서는 외부 자료 사이트 접속이 막혀 있어서, SEC·OpenDART 응답 해석은 실제 응답 모양의 가짜 자료로 시험했다.
 - 실제 호출은 GitHub Actions의 '실제 자료 점검'(`tests/test_online.py`)으로 확인한다.
+
+---
+
+# 사전(2026-10-09) 항목별 구현과 테스트
+
+| 사전 | 구현 | 테스트(손 계산·가짜 공시와 대조) |
+|---|---|---|
+| 1 점수: 지표 4개, 백분위 → 평균 → 백분위, 결측 제외, 70 편입, 50·10점 교체 | `judge/stocks.py` (`metrics`, `evaluate_pool`), 12-1 수정종가 `market/pool.py` | `test_rules.py::test_example_scores_by_hand`, `test_metrics_formulas`, `test_decisions_and_summary`, `test_rules_v2.py::test_momentum_uses_adjusted_close` |
+| 2 거름망 | `judge/stocks.py::filter_reasons` | `test_rules.py::test_filter_reasons`(200%·5천억·20억 달러 경계 포함) |
+| 3 시장 심리 | `judge/sentiment.py`, 자료 `market/fred.py`·`ecos.py`·`csvin.py` | `test_rules.py::test_sentiment_*`, `test_sources.py` |
+| 4 거시 | `judge/macro.py`(수출 같은 달 전년비) | `test_rules_v2.py::test_exports_same_month_yoy`, `test_app.py::test_sentiment_and_macro_pages` |
+| 5 손실 한도 | `judge/holdings.py` | `test_rules_v2.py::test_all_signals_listed_in_priority_order`(2%·−25%) |
+| 6 매도 판단 | `judge/holdings.py` (② = 카드 무너짐) | `test_rules_v2.py::test_sell_signal_two_follows_card_status`, `test_app.py::test_sell_signals_follow_card_status` |
+| 7 매수 이유 카드 | `judge/reasons.py` | `test_rules_v2.py` 카드 상태 순서, 보류 유지, 지표·사실 없으면 매수 불가, 조건 변경 이력 |
+| 8 참고 근거 | `judge/evidence.py`, `market/insider.py`(Form 4), `market/f13.py`(13F) | `test_evidence.py` 장내 매수 확인·미확인·10b5-1 제외, 13F 공개 보유분 비중, 미확인 표시, 보유 중첩 |
+
+스프레드시트는 이전 명세 기준 고정본(`builder/v1_holdings.py`, `builder/v1_macro.py`)으로 계속 검증한다(`test_workbook.py`).

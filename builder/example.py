@@ -9,7 +9,7 @@ import datetime as dt
 import math
 import random
 
-from judge.holdings import Account, BuyPlan, Holding, Reason
+from builder.v1_holdings import Account, BuyPlan, Holding, Reason
 from judge.stocks import Stock
 
 D = dt.date

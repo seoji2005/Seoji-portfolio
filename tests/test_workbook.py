@@ -8,8 +8,9 @@ from builder.workbook import (
     DASH_CAND, HOLD_FIRST, MACRO_HELP_FIRST, PLAN_FIRST, SC, SENT_FIRST, SH_DASH, SH_HOLD, SH_MACRO, SH_PLAN, SH_SENT,
     SH_REASON, SH_STOCK, STOCK_FIRST, REASON_FIRST, DASH_HOLD,
 )
-from judge import macro, sentiment
-from judge.holdings import evaluate_holdings, plan_purchase, reason_note, record_status
+from builder import v1_macro as macro
+from builder.v1_holdings import evaluate_holdings, plan_purchase, reason_note, record_status
+from judge import sentiment
 from judge.stocks import evaluate_pool
 
 from .conftest import needs_soffice

@@ -14,7 +14,7 @@ from openpyxl.workbook.properties import CalcProperties
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from judge.common import BANDS, IMPL, SPEC
-from judge.macro import SERIES as MACRO_SERIES
+from builder.v1_macro import SERIES as MACRO_SERIES
 
 FONT = "Arial"
 F_INPUT = PatternFill("solid", fgColor="FFF2CC")
@@ -1080,7 +1080,7 @@ def build_dashboard(ws):
 
 GUIDE = [
     ("투자 판단 보조 시트", "title"),
-    ("판단 기준 명세(docs/spec.md)를 스프레드시트 수식으로 옮긴 1차 구현. 프로그램은 제안만 한다. 매매는 사람이 승인하고 직접 한다.", ""),
+    ("판단 기준 이전 명세(docs/spec_v1.md)를 스프레드시트 수식으로 옮긴 1차 구현. 프로그램은 제안만 한다. 매매는 사람이 승인하고 직접 한다.", ""),
     ("", ""),
     ("칸 색", "head"),
     ("노란 바탕 + 파란 글씨 = 입력하는 칸. 나머지는 수식이므로 고치지 않는다. 숨긴 열은 중간 계산이다(열 숨기기 해제로 볼 수 있음).", ""),

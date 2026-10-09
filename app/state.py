@@ -11,16 +11,19 @@ import pandas as pd
 import streamlit as st
 from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
 
-from judge.holdings import Account, Holding, Reason, evaluate_holdings
+from judge.evidence import EvidenceRow
+from judge.evidence import summarize as summarize_evidence
+from judge.holdings import Account, Holding, evaluate_holdings
 from judge.portfolio import Position
-from market import yahoo
+from judge.reasons import ReasonItem, card
+from market import csvin, ecos, f13, fred, insider, sec, yahoo
 from market.pool import Entry, collect, score
 from market.provider import LiveProvider
 from market.sample import SampleProvider
 
 from . import store
 
-SECRETS = ("SEC_USER_AGENT", "OPENDART_API_KEY", "GITHUB_TOKEN", "GITHUB_REPO", "GITHUB_BRANCH", "DATA_MODE")
+SECRETS = ("SEC_USER_AGENT", "OPENDART_API_KEY", "ECOS_API_KEY", "GITHUB_TOKEN", "GITHUB_REPO", "GITHUB_BRANCH", "DATA_MODE")
 HISTORY_YEARS = 21
 
 
@@ -171,24 +174,32 @@ def account() -> tuple[float, float]:
     return _num(r["total_krw"]) or 0.0, _num(r["cash_krw"]) or 0.0
 
 
-def reasons() -> list[Reason]:
+def reason_items() -> list[ReasonItem]:
+    """매수 이유 카드(my/buy_reasons.csv). 비어 있으면 이전 형식(my/reasons.csv)을 읽어 보여 준다(파일은 그대로 둠)."""
+    rows = _rows(store.read("cards"))
+    legacy = not rows
+    if legacy:
+        rows = [{"code": r["code"], "no": r.get("no"), "reason": r.get("reason", ""), "indicator": r.get("evidence", ""), "fact": "",
+                 "condition": r.get("break_rule", ""), "period": "", "status": {"유지": "통과", "무너짐": "무너짐"}.get(str(r.get("result", "")).strip(), ""),
+                 "note": "이전 형식에서 옮김", "checked": r.get("checked", "")} for r in _rows(store.read("reasons"))]
     out = []
-    for r in _rows(store.read("reasons")):
-        checked = None
-        try:
-            checked = dt.date.fromisoformat(str(r.get("checked", "")).strip()) if str(r.get("checked", "")).strip() else None
-        except ValueError:
-            pass
-        out.append(Reason(str(r["code"]).strip(), _num(r.get("no")), str(r.get("reason", "")), str(r.get("core", "")).upper() == "Y",
-                          str(r.get("evidence", "")).strip(), str(r.get("break_rule", "")).strip(), checked, str(r.get("result", "")).strip()))
+    for i, r in enumerate(rows):
+        no = _num(r.get("no"))
+        out.append(ReasonItem(str(r["code"]).strip(), int(no) if no else i + 1, *(str(r.get(k, "") or "").strip() for k in
+                              ("reason", "indicator", "fact", "condition", "period", "status", "note", "checked"))))
     return out
+
+
+def cards() -> dict:
+    items = reason_items()
+    return {code: card(code, items) for code in dict.fromkeys(i.code for i in items)}
 
 
 @dataclass
 class Book:
-    """내 포트폴리오 계산 결과."""
+    """보유 종목 계산 결과."""
 
-    positions: list  # judge.portfolio.Position
+    positions: list  # judge.portfolio.Position(사전 밖 기능에서 씀)
     holdings: list  # judge.holdings.HoldingResult
     cash: float
     total_account: float
@@ -201,23 +212,130 @@ def book() -> Book:
     hs, ps = [], []
     for r in _rows(store.read("portfolio")):
         d = find(r["country"], str(r["code"]).strip())
-        price = d.quote.price if d else None
-        last = None
-        try:
-            last = dt.date.fromisoformat(str(r.get("last_earnings", "")).strip())
-        except ValueError:
-            pass
         h = Holding(r["country"], str(r["code"]).strip(), (d.name if d else r.get("name", "")), _num(r.get("qty")), _num(r.get("avg_price")),
-                    _num(r.get("cost_krw")), price, last)
+                    _num(r.get("cost_krw")), d.quote.price if d else None)
         hs.append(h)
     pools = {c: ([d.result for d in g], b.result if b else None) for c, (g, b) in pool().items()}
-    results = evaluate_holdings(Account(total, cash, fx or 0.0), hs, reasons(), pools)
+    statuses = {code: c.status for code, c in cards().items()}
+    results = evaluate_holdings(Account(total, cash, fx or 0.0), hs, statuses, pools)
     for h, res in zip(hs, results):
         d = find(h.country, h.code)
         sc = d.result.score if d and d.result and d.result.scored else None
         why = "" if sc is not None else ((d.data_problem or d.result.summary) if d and d.result else "관심 종목 자료 없음")
         ps.append(Position(h.country, h.code, h.name, res.value_krw or 0.0, sc, why))
     return Book(ps, results, cash, total, fx)
+
+
+# ---------------------------------------------------------------- 시장 심리(3)·거시(4)
+
+SENT_FRED = {"sp500": "SP500", "vix": "VIXCLS", "baa": "BAA10Y"}
+KR_FILES = {"vkospi": "kr_vkospi", "aa": "kr_aa", "ktb": "kr_ktb", "credit": "kr_credit"}
+
+
+@st.cache_data(ttl=12 * 3600, show_spinner=False)
+def _fred(series_id: str, start: dt.date):
+    return fred.fetch(series_id, start)
+
+
+@st.cache_data(ttl=12 * 3600, show_spinner=False)
+def _ecos(key: str, which: str, start: dt.date, end: dt.date):
+    return ecos.fetch(key, which, start, end)
+
+
+def sentiment_raw(market: str) -> tuple[dict, dict]:
+    """judge.sentiment.compute에 넣을 원자료와, 지표별 출처 설명."""
+    if mode() == "sample":
+        from builder.example import sentiment_raw as sample
+
+        return sample()[market], {k: "예시 자료(가상)" for k in ("sp500", "vix", "baa", "kospi", "vkospi", "aa", "ktb", "credit")}
+    today = dt.date.today()
+    start = today - dt.timedelta(days=int(365.25 * 6.5))
+    if market == "미국":
+        return {k: _fred(sid, start) for k, sid in SENT_FRED.items()}, {k: f"FRED {sid}" for k, sid in SENT_FRED.items()}
+    raw, src = {}, {}
+    k = provider().histories(["^KS11"]).get("^KS11")
+    raw["kospi"] = [(i.date(), float(v)) for i, v in k["close"].items()] if k is not None and not k.empty else []
+    src["kospi"] = "Yahoo ^KS11(코스피 시세)"
+    key = os.environ.get("ECOS_API_KEY", "")
+    for name, file in KR_FILES.items():
+        if name in ("aa", "ktb") and key:
+            try:
+                raw[name], src[name] = _ecos(key, name, start, today), f"한국은행 ECOS {ecos.ITEMS[name][2]}"
+                continue
+            except Exception as ex:  # noqa: BLE001
+                src[name] = f"ECOS 오류({ex}) → 올린 CSV 사용"
+        raw[name] = csvin.from_frame(store.read(file))
+        src.setdefault(name, "올린 CSV" if raw[name] else "자료 없음")
+    return raw, src
+
+
+def macro_raw() -> dict:
+    if mode() == "sample":
+        from builder.example import macro_raw as sample
+
+        return sample()
+    start = dt.date.today() - dt.timedelta(days=int(365.25 * 11.5))
+    ids = {"sahm": "SAHMREALTIME", "dgs10": "DGS10", "t10y3m": "T10Y3M", "jpy": "DEXJPUS", "exports": "XTEXVA01KRM667N"}
+    return {k: _fred(sid, start) for k, sid in ids.items()}
+
+
+# ---------------------------------------------------------------- 참고 근거(8)
+
+
+@st.cache_data(ttl=7 * 86400, show_spinner=False)
+def _sec_titles(ua: str):
+    return sec.company_titles(ua)
+
+
+@st.cache_data(ttl=12 * 3600, show_spinner=False)
+def _insider(cik: int, ua: str):
+    return insider.fetch(cik, ua)
+
+
+@st.cache_data(ttl=24 * 3600, show_spinner=False)
+def _latest_13f(cik: int, ua: str):
+    return f13.latest_13f(cik, ua)
+
+
+def evidence_rows(code: str) -> list[EvidenceRow]:
+    out = []
+    for r in _rows(store.read("evidence")):
+        if str(r["code"]).strip() == code:
+            out.append(EvidenceRow(code, str(r.get("kind", "")).strip(), str(r.get("holder", "")).strip(), str(r.get("detail", "")).strip(),
+                                   _num(r.get("weight_pct")), str(r.get("as_of", "")).strip(), str(r.get("source", "")).strip()))
+    return out
+
+
+def evidence(d) -> list:
+    """종목 카드의 참고 근거 절. 점수·순위·매매 규칙에 쓰지 않는다."""
+    rows = evidence_rows(d.entry.code)
+    if d.entry.country == "한국":
+        return summarize_evidence("한국", rows, insider_note="한국 공시(DART)는 장내 매수 여부와 사전공시 거래 여부를 자동으로 가리지 않음 — 직접 확인해 넣은 것만 표시")
+    ua = os.environ.get("SEC_USER_AGENT", "")
+    if mode() == "sample" or not ua:
+        why = "예시 자료 모드라 SEC를 조회하지 않음" if mode() == "sample" else "SEC_USER_AGENT가 없어 SEC를 조회하지 않음"
+        return summarize_evidence("미국", rows, insider_note=why, f13_note=why)
+    try:
+        cik, title = _sec_titles(ua).get(d.entry.code.upper().replace(".", "-"), (None, ""))
+        ins = _insider(cik, ua) if cik else None
+        note = "" if cik else "SEC 목록에 없음"
+    except Exception as ex:  # noqa: BLE001
+        ins, title, note = None, "", f"SEC 조회 오류: {ex}"
+    hits, f13_note = [], "고른 운용사가 없음(설정·도움말에서 추가)"
+    for m in _rows(store.read("managers")):
+        cik_m = _num(m.get("cik"))
+        if not cik_m:
+            continue
+        try:
+            period, table = _latest_13f(int(cik_m), ua)
+        except Exception as ex:  # noqa: BLE001
+            f13_note = f"13F 조회 오류: {ex}"
+            continue
+        w, matched = f13.weight_of(table, title)
+        f13_note = "고른 운용사의 최근 13F에서 찾지 못함(이름 대조)"
+        if w > 0:
+            hits.append(f13.Hit(str(m.get("name", "")) or str(int(cik_m)), period, w, matched))
+    return summarize_evidence("미국", rows, ins, note, hits, f13_note)
 
 
 def flash(message: str) -> None:

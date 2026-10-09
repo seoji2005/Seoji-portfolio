@@ -22,9 +22,15 @@ def kpis(items: list[tuple]) -> None:
     cells = []
     for item in items:
         label, value, sub = (list(item) + [None])[:3]
-        sub_html = f'<div class="s">{html.escape(str(sub))}</div>' if sub not in (None, "") else ""
-        cells.append(f'<div class="kpi"><div class="l">{html.escape(str(label))}</div><div class="v">{html.escape(str(value))}</div>{sub_html}</div>')
+        esc = lambda x: html.escape(str(x)).replace("$", "&#36;")  # noqa: E731 — $가 수식으로 바뀌지 않게
+        sub_html = f'<div class="s">{esc(sub)}</div>' if sub not in (None, "") else ""
+        cells.append(f'<div class="kpi"><div class="l">{esc(label)}</div><div class="v">{esc(value)}</div>{sub_html}</div>')
     st.markdown(CSS + '<div class="kpis">' + "".join(cells) + "</div>", unsafe_allow_html=True)
+
+
+def md(s: str) -> str:
+    """마크다운에서 $ 두 개가 수식으로, ~ 두 개가 취소선으로 바뀌지 않게."""
+    return str(s).replace("$", "\\$").replace("~", "\\~")
 
 
 def change(after: float | None, before: float | None, digits: int = 1) -> str:
