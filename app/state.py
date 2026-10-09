@@ -74,6 +74,11 @@ def _profile(m, sym):
     return _provider(m).profile(sym)
 
 
+@st.cache_data(ttl=12 * 3600, show_spinner=False)
+def _rights(m, code, start, end):
+    return _provider(m).rights_events(code, start, end)
+
+
 class Cached:
     """market.pool.collect에 넘기는 공급자. 호출을 Streamlit 캐시로 감싼다."""
 
@@ -91,6 +96,9 @@ class Cached:
 
     def fundamentals(self, country, code):
         return _fundamentals(self.m, country, code)
+
+    def rights_events(self, code, start, end):
+        return _rights(self.m, code, start, end)
 
     def status(self):
         return _provider(self.m).status()

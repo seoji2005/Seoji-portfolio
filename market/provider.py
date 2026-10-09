@@ -56,6 +56,12 @@ class LiveProvider:
             return Fundamentals(source="OpenDART", notes=["OpenDART 인증키(OPENDART_API_KEY)가 설정되지 않음"])
         return dart.fetch_fundamentals(code, self.dart_key, self._maps("한국"), dt.date.today())
 
+    def rights_events(self, code, start, end) -> list:
+        """한국 종목의 권리락이 생기는 증자 결정(OpenDART). 확인할 수 없으면 예외."""
+        if not self.dart_key:
+            raise dart.DartError("OpenDART 인증키 없음")
+        return dart.rights_events(code, self.dart_key, self._maps("한국"), start, end)
+
     def status(self) -> dict:
         return {
             "SEC_USER_AGENT": "설정됨" if self.sec_ua else "없음 — 미국 종목 재무를 받을 수 없음",

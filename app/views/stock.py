@@ -57,7 +57,7 @@ elif r.decision.startswith("교체 제안"):
 elif r.filter_reasons:
     st.warning(f"**거름망 제외** — {', '.join(r.filter_reasons)}. 점수를 매기지 않습니다.", icon=":material/filter_alt_off:")
 elif not r.scored:
-    st.info(f"**{r.status}** — 지표를 모두 계산할 수 있어야 점수를 매깁니다.", icon=":material/help:")
+    st.info(f"**{r.status}** — 지표를 모두 계산할 수 있어야 점수를 매깁니다." + (f" {d.mom_block}" if d.mom_block else ""), icon=":material/help:")
 else:
     st.info(f"**{r.decision or '편입 기준 미달'}** — 점수 {r.score:.1f}. {r.summary}", icon=":material/info:")
 
@@ -142,7 +142,8 @@ with st.expander("점수에 쓴 숫자와 출처"):
         f"- 이자부부채 구성: {', '.join(f'{k} {v / unit:,.0f}' for k, v in f.debt_parts.items()) or '없음'}\n"
         f"- 현금성자산 구성: {', '.join(f'{k} {v / unit:,.0f}' for k, v in f.cash_parts.items()) or '없음'}\n"
         f"- 부채비율: {fmt.pct(r.debt_ratio, 0)} (한도 {SPEC['debt_ratio_max']:.0%})\n"
-        f"- 12-1 수익률(분할·병합 반영 종가, 현금배당 미반영, 기준일 {asof or '–'}): 12개월 전 {fmt.price(p12, country)}, 1개월 전 {fmt.price(p1, country)}\n"
+        f"- 12-1 수익률(분할·병합 반영 종가, 현금배당 미반영, 기준일 {asof or '–'}): 12개월 전 {fmt.price(p12, country)}, 1개월 전 {fmt.price(p1, country)}"
+        f"{' — ' + d.mom_block if d.mom_block else ''}\n"
         f"- 금융·리츠 판단: {d.fin_reason}"
     ))
     for note in f.notes + d.notes:

@@ -148,7 +148,7 @@
 
 | 사전 | 구현 | 테스트(손 계산·가짜 공시와 대조) |
 |---|---|---|
-| 1 점수: 지표 4개, 백분위 → 평균 → 백분위, 결측 제외, 70 편입, 50·10점 교체 | `judge/stocks.py` (`metrics`, `evaluate_pool`), 12-1 배당 미반영 종가 `market/pool.py` | `test_rules.py::test_example_scores_by_hand`, `test_metrics_formulas`, `test_decisions_and_summary`, `test_rules_v2.py::test_momentum_uses_close_without_dividends` |
+| 1 점수: 지표 4개, 백분위 → 평균 → 백분위, 결측 제외, 70 편입, 50·10점 교체 | `judge/stocks.py` (`metrics`, `evaluate_pool`), 12-1 배당 미반영 종가 `market/pool.py` | `test_rules.py::test_example_scores_by_hand`, `test_metrics_formulas`, `test_decisions_and_summary`, `test_rules_v2.py::test_momentum_uses_close_without_dividends`, 권리락 `test_rights_*`·`test_ex_rights_in_window_*` |
 | 2 거름망 | `judge/stocks.py::filter_reasons` | `test_rules.py::test_filter_reasons`(200%·5천억·20억 달러 경계 포함) |
 | 3 시장 심리 | `judge/sentiment.py`, 자료 `market/fred.py`·`ecos.py`·`csvin.py` | `test_rules.py::test_sentiment_*`, `test_sources.py` |
 | 4 거시 | `judge/macro.py`(수출 같은 달 전년비) | `test_rules_v2.py::test_exports_same_month_yoy`, `test_app.py::test_sentiment_and_macro_pages` |
@@ -165,4 +165,8 @@
 |---|---|---|---|---|
 | 2026-10-09 | 한국 수출 전년비(2026-06) | FRED XTEXVA01KRM667N(미 달러, 환율 환산, 계절조정 안 함, 월별): 2026-06 102,170,000,000 ÷ 2025-06 59,833,800,000 − 1 = 70.756% → 화면 70.8% | 산업통상부 수출입 동향: 6월 수출 1,021.7억 달러, 전년 동월 대비 70.7%(잠정 발표 7/1은 1,023억 달러·71%) | 이번 달 값은 같음. 0.1%p 차이는 전년 동월 값(FRED 598.338억 달러) 또는 반올림 차이로 보이나, 공식 전년 동월 확정치와는 아직 대조하지 못함 |
 
-실제 재무로 4지표·최종 점수가 나오는지는 `SEC_USER_AGENT`·`OPENDART_API_KEY`를 Actions 비밀값에 넣은 뒤 '실제 자료 점검' 결과(Summary 표)로 확인한다. 2026-10-09 실행은 두 값이 없어 미국·한국 모두 '자료 없음'(채점 0/15)으로 확인되지 않았다.
+실제 재무로 4지표·최종 점수가 나오는지는 `SEC_USER_AGENT`·`OPENDART_API_KEY`를 Actions 비밀값에 넣은 뒤 '실제 자료 점검' 결과(Summary)로 확인한다. 결과는 나라별로 검증 미실행 / 검증 실패 / 검증 통과 중 하나다. 손계산 잣대가 동점·작은 풀에서도 프로그램과 같은 규칙인지는 `test_rules_v2.py::test_online_hand_calculation_matches_*`로 따로 확인한다(최고점이 100이 아닐 수 있음).
+
+| 실행일 | 미국 | 한국 | 비고 |
+|---|---|---|---|
+| 2026-10-09 | 검증 미실행 | 검증 미실행 | 두 설정 없음(채점 0/15, 0/15). Actions 초록은 실행 오류가 없었다는 뜻일 뿐 |

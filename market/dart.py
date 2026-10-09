@@ -12,6 +12,7 @@ import io
 import re
 import xml.etree.ElementTree as ET
 import zipfile
+from dataclasses import dataclass
 
 from .models import Fundamentals
 
@@ -142,13 +143,23 @@ class DartError(RuntimeError):
     pass
 
 
+def _get(http, path: str, params: dict, timeout: int):
+    """요청 주소에 인증키가 들어가므로, 오류 문구에 주소를 남기지 않는다."""
+    try:
+        r = http.get(f"{BASE}/{path}", params=params, timeout=timeout)
+        r.raise_for_status()
+    except Exception as ex:  # noqa: BLE001
+        code = getattr(getattr(ex, "response", None), "status_code", "")
+        raise DartError(f"OpenDART {path} 접속 오류 {type(ex).__name__} {code}".strip()) from None
+    return r
+
+
 def corp_codes(key: str, session=None) -> dict[str, str]:
     """종목코드(6자리) → 고유번호(corp_code)."""
     import requests
 
     http = session or requests
-    r = http.get(f"{BASE}/corpCode.xml", params={"crtfc_key": key}, timeout=60)
-    r.raise_for_status()
+    r = _get(http, "corpCode.xml", {"crtfc_key": key}, 60)
     try:
         z = zipfile.ZipFile(io.BytesIO(r.content))
     except zipfile.BadZipFile:
@@ -169,8 +180,7 @@ def statements(key: str, corp: str, year: int, code: str, session=None) -> list 
     http = session or requests
     for fs in ("CFS", "OFS"):
         params = {"crtfc_key": key, "corp_code": corp, "bsns_year": str(year), "reprt_code": code, "fs_div": fs}
-        r = http.get(f"{BASE}/fnlttSinglAcntAll.json", params=params, timeout=30)
-        r.raise_for_status()
+        r = _get(http, "fnlttSinglAcntAll.json", params, 30)
         data = r.json()
         status = data.get("status")
         if status == "000" and data.get("list"):
@@ -206,3 +216,66 @@ def fetch_fundamentals(stock_code: str, key: str, corp_map: dict, today: dt.date
     old = statements(key, corp, year - 3, code, session)
     old_annual = statements(key, corp, year - 3, ANNUAL, session)
     return parse(year, code, latest, annual_prev, old, old_annual)
+
+
+# ---------------------------------------------------------------- 권리락(사전 1번 12-1 수익률)
+# 시세(Yahoo)가 증자 권리락을 보정했는지 확인할 수 없으므로, 권리락이 12-1 구간에 걸리면 그 종목의 12-1은 판단 불가(결측).
+# 권리락이 생기는 증자: 무상증자, 유무상증자, 주주배정 방식 유상증자(제3자배정·일반공모는 권리락 없음).
+RIGHTS_APIS = (("piicDecsn", "유상증자"), ("fricDecsn", "무상증자"), ("pifricDecsn", "유무상증자"))
+DATE_TEXT = re.compile(r"(\d{4})\D{1,3}(\d{1,2})\D{1,3}(\d{1,2})")
+
+
+@dataclass
+class RightsEvent:
+    kind: str  # 유상증자 / 무상증자 / 유무상증자
+    filed: dt.date  # 공시 접수일
+    record_date: dt.date | None  # 신주배정기준일(공시 항목에 있을 때만: 무상증자)
+    method: str  # 증자방식(유상증자)
+    rcept_no: str
+
+    @property
+    def text(self) -> str:
+        when = f"신주배정기준일 {self.record_date}" if self.record_date else f"{self.filed} 결정 공시(기준일 항목 없음)"
+        return f"{self.kind}{f'({self.method})' if self.method else ''} {when}, 접수번호 {self.rcept_no}"
+
+
+def _date(s) -> dt.date | None:
+    m = DATE_TEXT.search(s or "")
+    try:
+        return dt.date(*map(int, m.groups())) if m else None
+    except ValueError:
+        return None
+
+
+def parse_rights(api: str, kind: str, rows: list[dict]) -> list[RightsEvent]:
+    """증자 결정 공시 → 권리락이 생기는 것만."""
+    out = []
+    for row in rows:
+        method = next((v.strip() for k, v in row.items() if k.endswith("ic_mthn") and v and v.strip() not in ("-",)), "")
+        if kind == "유상증자" and method and "주주배정" not in method:
+            continue  # 제3자배정·일반공모는 권리락 없음. 방식을 모르면 남긴다(확인 불가)
+        record = next((_date(v) for k, v in row.items() if k.endswith("nstk_asstd") and _date(v)), None)
+        no = row.get("rcept_no", "")
+        out.append(RightsEvent(kind, dt.date(int(no[:4]), int(no[4:6]), int(no[6:8])), record, method, no))
+    return out
+
+
+def rights_events(stock_code: str, key: str, corp_map: dict, start: dt.date, end: dt.date, session=None) -> list[RightsEvent]:
+    """start~end에 접수된 증자 결정 중 권리락이 생기는 것. 조회 실패는 예외로 알린다."""
+    import requests
+
+    corp = corp_map.get(stock_code.zfill(6))
+    if corp is None:
+        raise DartError(f"OpenDART 목록에 {stock_code} 없음")
+    http = session or requests
+    out = []
+    for api, kind in RIGHTS_APIS:
+        params = {"crtfc_key": key, "corp_code": corp, "bgn_de": f"{start:%Y%m%d}", "end_de": f"{end:%Y%m%d}"}
+        r = _get(http, f"{api}.json", params, 30)
+        data = r.json()
+        if data.get("status") == "013":  # 조회된 데이터 없음
+            continue
+        if data.get("status") != "000":
+            raise DartError(f"{api} {data.get('status')} {data.get('message')}")
+        out += parse_rights(api, kind, data.get("list") or [])
+    return sorted(out, key=lambda e: e.filed)

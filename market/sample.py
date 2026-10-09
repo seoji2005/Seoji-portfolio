@@ -79,5 +79,8 @@ class SampleProvider:
         f.cash_parts = {"현금및현금성자산(예시)": f.cash}
         return f
 
+    def rights_events(self, code, start, end) -> list:
+        return []
+
     def status(self) -> dict:
         return {"자료": "예시 자료(가상) — 실제 시세가 아님"}

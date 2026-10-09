@@ -46,7 +46,7 @@ else:
                 "판정": "자료 없음" if d.data_problem else (r.decision or ("" if r.scored else "점수 없음")),
                 "현재가": fmt.price(q.price, country),
                 "오늘": chg,
-                "요약": d.data_problem or r.summary,
+                "요약": d.data_problem or (r.summary + (f" · {d.mom_block}" if d.mom_block else "")),
                 "_code": d.entry.code,
             }
         )
